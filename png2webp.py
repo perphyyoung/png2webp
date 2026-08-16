@@ -60,12 +60,13 @@ class App:
         # 参数
         frm_opt = ttk.LabelFrame(self.root, text="转换参数")
         frm_opt.pack(fill="x", **pad)
-        ttk.Label(frm_opt, text="质量").grid(row=0, column=0, sticky="e", padx=4, pady=2)
+        ttk.Label(frm_opt, text="quality").grid(row=0, column=0, sticky="e", padx=4, pady=2)
         ttk.Scale(frm_opt, from_=1, to=100, variable=self.quality, command=self._on_quality_change, orient="horizontal").grid(row=0, column=1, sticky="ew", padx=4, pady=2)
         self.quality_label = ttk.Label(frm_opt, text="100")
         self.quality_label.grid(row=0, column=2, padx=4)
-        ttk.Checkbutton(frm_opt, text="无损 (lossless)", variable=self.lossless).grid(row=1, column=1, sticky="w", padx=4)
-        ttk.Label(frm_opt, text="方法 (method)").grid(row=2, column=0, sticky="e", padx=4, pady=2)
+        ttk.Label(frm_opt, text="lossless").grid(row=1, column=0, sticky="e", padx=4, pady=2)
+        ttk.Checkbutton(frm_opt, variable=self.lossless).grid(row=1, column=1, sticky="w", padx=4)
+        ttk.Label(frm_opt, text="method").grid(row=2, column=0, sticky="e", padx=4, pady=2)
         ttk.Combobox(frm_opt, textvariable=self.method, values=["0", "1", "2", "3", "4", "5", "6"], state="readonly", width=4).grid(row=2, column=1, sticky="w", padx=4)
         frm_opt.columnconfigure(1, weight=1)
 
