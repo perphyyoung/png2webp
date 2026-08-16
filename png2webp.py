@@ -121,10 +121,13 @@ class App:
         out_dir = self.output_dir.get() or os.path.dirname(self.files[0])
         os.makedirs(out_dir, exist_ok=True)
         ok, fail = 0, 0
+        quality = self.quality.get()
+        lossless = self.lossless.get()
+        method = int(self.method.get())
         for png_path in self.files:
             save_path = os.path.join(out_dir, os.path.splitext(os.path.basename(png_path))[0] + ".webp")
             try:
-                convert_png_to_webp(png_path, save_path, self.quality.get(), self.lossless.get(), int(self.method.get()))
+                convert_png_to_webp(png_path, save_path, quality, lossless, method)
                 ok += 1
             except Exception as e:
                 fail += 1
