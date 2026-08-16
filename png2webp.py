@@ -24,7 +24,7 @@ def convert_png_to_webp(png_path, save_path, quality=100, lossless=False, method
 class App:
     def __init__(self, root):
         self.root = root
-        root.title("PNG 转 WEBP")
+        root.title("PNG 转 WEBP（保留 workflow）")
         root.geometry("520x420")
 
         self.files = []
@@ -39,7 +39,7 @@ class App:
         pad = {"padx": 8, "pady": 4}
 
         # 文件选择
-        frm_file = ttk.LabelFrame(self.root, text="PNG 文件")
+        frm_file = ttk.LabelFrame(self.root, text="PNG 文件列表")
         frm_file.pack(fill="x", **pad)
         self.file_list = tk.Listbox(frm_file, height=6)
         self.file_list.pack(side="left", fill="both", expand=True, padx=4, pady=4)
@@ -61,8 +61,9 @@ class App:
         frm_opt = ttk.LabelFrame(self.root, text="转换参数")
         frm_opt.pack(fill="x", **pad)
         ttk.Label(frm_opt, text="质量").grid(row=0, column=0, sticky="e", padx=4, pady=2)
-        ttk.Scale(frm_opt, from_=1, to=100, variable=self.quality, orient="horizontal").grid(row=0, column=1, sticky="ew", padx=4, pady=2)
-        ttk.Label(frm_opt, textvariable=self.quality).grid(row=0, column=2, padx=4)
+        ttk.Scale(frm_opt, from_=1, to=100, variable=self.quality, command=self._on_quality_change, orient="horizontal").grid(row=0, column=1, sticky="ew", padx=4, pady=2)
+        self.quality_label = ttk.Label(frm_opt, text="100")
+        self.quality_label.grid(row=0, column=2, padx=4)
         ttk.Checkbutton(frm_opt, text="无损 (lossless)", variable=self.lossless).grid(row=1, column=1, sticky="w", padx=4)
         ttk.Label(frm_opt, text="方法 (method)").grid(row=2, column=0, sticky="e", padx=4, pady=2)
         ttk.Combobox(frm_opt, textvariable=self.method, values=["0", "1", "2", "3", "4", "5", "6"], state="readonly", width=4).grid(row=2, column=1, sticky="w", padx=4)
@@ -105,6 +106,12 @@ class App:
         d = filedialog.askdirectory()
         if d:
             self.output_dir.set(d)
+
+    def _on_quality_change(self, value):
+        # Scale 回调传入浮点，取整后同时更新 IntVar 与标签显示
+        rounded = int(round(float(value)))
+        self.quality.set(rounded)
+        self.quality_label.config(text=str(rounded))
 
     def _convert(self):
         if not self.files:
