@@ -1,0 +1,12 @@
+[project]
+name = "png2webp"
+version = "0.1.0"
+description = "将 PNG 转 WEBP，并保留 workflow 元数据写入 EXIF"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "piexif>=1.1.3",
+    "pillow>=12.3.0",
+    "pyinstaller>=6.22.1",
+    "tkinterdnd2>=0.6.2",
+]
