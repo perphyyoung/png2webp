@@ -1,6 +1,6 @@
 [project]
 name = "png2webp"
-version = "0.1.0"
+version = "0.1.1"
 description = "将 PNG 转 WEBP，并保留 workflow 元数据写入 EXIF"
 readme = "README.md"
 requires-python = ">=3.13"

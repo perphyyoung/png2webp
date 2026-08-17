@@ -28,7 +28,7 @@ class App:
         root.geometry("520x420")
 
         self.files = []
-        self.output_dir = tk.StringVar(value="")
+        self.output_dir = tk.StringVar(value="D:/desktop/webp")
         self.quality = tk.IntVar(value=100)
         self.lossless = tk.BooleanVar(value=False)
         self.method = tk.StringVar(value="6")
