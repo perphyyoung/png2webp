@@ -22,13 +22,13 @@ uv sync
 ## 运行
 
 ```bash
-python png2webp.py
+uv run png2webp.py
 ```
 
 ## 打包
 
 ```bash
-pyinstaller -F -w png2webp.py
+uv run pyinstaller -F -w png2webp.py
 ```
 
 ## 说明
