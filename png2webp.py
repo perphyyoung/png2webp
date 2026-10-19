@@ -1,4 +1,6 @@
 import os
+import queue
+import threading
 import piexif
 from tkinter import filedialog, messagebox
 from tkinter import ttk
@@ -9,25 +11,28 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 
 def convert_png_to_webp(png_path, save_path, quality=100, lossless=False, method=6):
     """将 PNG 转 WEBP，并保留 workflow 元数据写入 EXIF。"""
-    img = Image.open(png_path)
-    workflow = img.info.get("workflow")
-    exif_bytes = None
-    if workflow:
-        exif_dict = {"0th": {piexif.ImageIFD.ImageDescription: "Workflow:" + workflow}}
-        exif_bytes = piexif.dump(exif_dict)
-    save_kwargs = {"quality": quality, "lossless": lossless, "method": method}
-    if exif_bytes:
-        save_kwargs["exif"] = exif_bytes
-    img.save(save_path, "WEBP", **save_kwargs)
+    with Image.open(png_path) as img:
+        workflow = img.info.get("workflow")
+        exif_bytes = None
+        if workflow:
+            exif_dict = {"0th": {piexif.ImageIFD.ImageDescription: "Workflow:" + workflow}}
+            exif_bytes = piexif.dump(exif_dict)
+        save_kwargs = {"quality": quality, "lossless": lossless, "method": method}
+        if exif_bytes:
+            save_kwargs["exif"] = exif_bytes
+        img.save(save_path, "WEBP", **save_kwargs)
 
 
 class App:
     def __init__(self, root):
         self.root = root
         root.title("PNG 转 WEBP（保留 workflow）")
-        root.geometry("520x420")
+        root.geometry("520x460")
 
         self.files = []
+        # 后台线程通过队列回传进度，主线程用 after 轮询刷新界面
+        self.queue = queue.Queue()
+        self.busy = False
         self.output_dir = tk.StringVar(value="D:/desktop/webp")
         self.quality = tk.IntVar(value=100)
         self.lossless = tk.BooleanVar(value=False)
@@ -47,15 +52,19 @@ class App:
         self.file_list.dnd_bind("<<Drop>>", self._on_drop)
         btn_col = ttk.Frame(frm_file)
         btn_col.pack(side="right", padx=4)
-        ttk.Button(btn_col, text="添加", command=self._add_files).pack(fill="x", pady=2)
-        ttk.Button(btn_col, text="移除", command=self._remove_selected).pack(fill="x", pady=2)
-        ttk.Button(btn_col, text="清空", command=self._clear_files).pack(fill="x", pady=2)
+        self.btn_add = ttk.Button(btn_col, text="添加", command=self._add_files)
+        self.btn_add.pack(fill="x", pady=2)
+        self.btn_remove = ttk.Button(btn_col, text="移除", command=self._remove_selected)
+        self.btn_remove.pack(fill="x", pady=2)
+        self.btn_clear = ttk.Button(btn_col, text="清空", command=self._clear_files)
+        self.btn_clear.pack(fill="x", pady=2)
 
         # 输出目录
         frm_out = ttk.LabelFrame(self.root, text="输出目录")
         frm_out.pack(fill="x", **pad)
         ttk.Entry(frm_out, textvariable=self.output_dir).pack(side="left", fill="x", expand=True, padx=4, pady=4)
-        ttk.Button(frm_out, text="选择", command=self._choose_output).pack(side="right", padx=4)
+        self.btn_output = ttk.Button(frm_out, text="选择", command=self._choose_output)
+        self.btn_output.pack(side="right", padx=4)
 
         # 参数
         frm_opt = ttk.LabelFrame(self.root, text="转换参数")
@@ -73,9 +82,13 @@ class App:
         # 操作
         frm_act = ttk.Frame(self.root)
         frm_act.pack(fill="x", **pad)
-        ttk.Button(frm_act, text="开始转换", command=self._convert).pack(side="left", padx=4)
+        self.btn_start = ttk.Button(frm_act, text="开始转换", command=self._convert)
+        self.btn_start.pack(side="left", padx=4)
 
-        # 状态
+        # 进度与状态
+        self.progress_var = tk.IntVar(value=0)
+        self.progress = ttk.Progressbar(self.root, variable=self.progress_var, maximum=1)
+        self.progress.pack(fill="x", **pad)
         self.status = ttk.Label(self.root, text="就绪")
         self.status.pack(fill="x", **pad)
 
@@ -115,25 +128,80 @@ class App:
         self.quality_label.config(text=str(rounded))
 
     def _convert(self):
+        if self.busy:
+            return
         if not self.files:
             messagebox.showwarning("提示", "请先添加 PNG 文件")
             return
         out_dir = self.output_dir.get() or os.path.dirname(self.files[0])
         os.makedirs(out_dir, exist_ok=True)
-        ok, fail = 0, 0
         quality = self.quality.get()
         lossless = self.lossless.get()
         method = int(self.method.get())
-        for png_path in self.files:
-            save_path = os.path.join(out_dir, os.path.splitext(os.path.basename(png_path))[0] + ".webp")
+        files = list(self.files)  # 快照，转换期间列表变化不影响本次任务
+
+        self.busy = True
+        self._set_controls_enabled(False)
+        self.progress.config(maximum=len(files))
+        self.progress_var.set(0)
+        self.status.config(text=f"正在转换 0/{len(files)}")
+
+        threading.Thread(
+            target=self._worker,
+            args=(files, out_dir, quality, lossless, method),
+            daemon=True,
+        ).start()
+        self.root.after(100, self._poll_queue)
+
+    def _set_controls_enabled(self, enabled):
+        state = "normal" if enabled else "disabled"
+        for widget in (self.btn_add, self.btn_remove, self.btn_clear, self.btn_output, self.btn_start):
+            widget.config(state=state)
+
+    def _worker(self, files, out_dir, quality, lossless, method):
+        """后台线程：只做转换，结果全部经队列交给主线程渲染。"""
+        ok, fail = 0, 0
+        failures = []
+        total = len(files)
+        for i, png_path in enumerate(files, start=1):
+            name = os.path.basename(png_path)
+            save_path = os.path.join(out_dir, os.path.splitext(name)[0] + ".webp")
             try:
                 convert_png_to_webp(png_path, save_path, quality, lossless, method)
                 ok += 1
+                self.queue.put(("progress", i, total, name, None))
             except Exception as e:
                 fail += 1
-                self.status.config(text=f"失败: {os.path.basename(png_path)} - {e}")
+                failures.append((name, str(e)))
+                self.queue.put(("progress", i, total, name, str(e)))
+        self.queue.put(("done", ok, fail, failures))
+
+    def _poll_queue(self):
+        try:
+            while True:
+                msg = self.queue.get_nowait()
+                if msg[0] == "progress":
+                    _, i, total, name, err = msg
+                    self.progress_var.set(i)
+                    if err:
+                        self.status.config(text=f"失败 {i}/{total}: {name} - {err}")
+                    else:
+                        self.status.config(text=f"正在转换 {i}/{total}: {name}")
+                else:
+                    self._finish(*msg[1:])
+                    return
+        except queue.Empty:
+            pass
+        self.root.after(100, self._poll_queue)
+
+    def _finish(self, ok, fail, failures):
+        self.busy = False
+        self._set_controls_enabled(True)
         self.status.config(text=f"完成: 成功 {ok} 个，失败 {fail} 个")
-        messagebox.showinfo("完成", f"成功 {ok} 个，失败 {fail} 个")
+        detail = f"成功 {ok} 个，失败 {fail} 个"
+        if failures:
+            detail += "\n\n失败明细：\n" + "\n".join(f"- {name}: {err}" for name, err in failures)
+        messagebox.showinfo("完成", detail)
 
 
 def main():
