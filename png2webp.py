@@ -59,6 +59,9 @@ class App:
         self.btn_remove.pack(fill="x", pady=2)
         self.btn_clear = ttk.Button(btn_col, text="清空", command=self._clear_files)
         self.btn_clear.pack(fill="x", pady=2)
+        self.file_scroll = ttk.Scrollbar(frm_file, orient="vertical", command=self.file_list.yview)
+        self.file_scroll.pack(side="right", fill="y", pady=4)
+        self.file_list.config(yscrollcommand=self.file_scroll.set)
 
         # 输出目录
         frm_out = ttk.LabelFrame(self.root, text="输出目录")
