@@ -27,7 +27,8 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("PNG 转 WEBP（保留 workflow）")
-        root.geometry("520x460")
+        self.width = 520
+        root.geometry(f"{self.width}x460")
 
         self.files = []
         # 后台线程通过队列回传进度，主线程用 after 轮询刷新界面
@@ -41,7 +42,7 @@ class App:
         self._build()
 
     def _build(self):
-        pad = {"padx": 8, "pady": 4}
+        pad = self.pad = {"padx": 8, "pady": 4}
 
         # 文件选择
         frm_file = ttk.LabelFrame(self.root, text="PNG 文件列表")
@@ -66,18 +67,23 @@ class App:
         self.btn_output = ttk.Button(frm_out, text="选择", command=self._choose_output)
         self.btn_output.pack(side="right", padx=4)
 
-        # 参数
-        frm_opt = ttk.LabelFrame(self.root, text="转换参数")
-        frm_opt.pack(fill="x", **pad)
-        ttk.Label(frm_opt, text="quality").grid(row=0, column=0, sticky="e", padx=4, pady=2)
-        ttk.Scale(frm_opt, from_=1, to=100, variable=self.quality, command=self._on_quality_change, orient="horizontal").grid(row=0, column=1, sticky="ew", padx=4, pady=2)
-        self.quality_label = ttk.Label(frm_opt, text="100")
+        # 参数（默认收起，标题显示当前参数摘要）
+        self.opt_expanded = False
+        self.opt_header = ttk.Button(self.root, style="Toolbutton", command=self._toggle_opt)
+        self.opt_header.pack(fill="x", **pad)
+        self.frm_opt = ttk.LabelFrame(self.root)
+        ttk.Label(self.frm_opt, text="quality").grid(row=0, column=0, sticky="e", padx=4, pady=2)
+        ttk.Scale(self.frm_opt, from_=1, to=100, variable=self.quality, command=self._on_quality_change, orient="horizontal").grid(row=0, column=1, sticky="ew", padx=4, pady=2)
+        self.quality_label = ttk.Label(self.frm_opt, text="100")
         self.quality_label.grid(row=0, column=2, padx=4)
-        ttk.Label(frm_opt, text="lossless").grid(row=1, column=0, sticky="e", padx=4, pady=2)
-        ttk.Checkbutton(frm_opt, variable=self.lossless).grid(row=1, column=1, sticky="w", padx=4)
-        ttk.Label(frm_opt, text="method").grid(row=2, column=0, sticky="e", padx=4, pady=2)
-        ttk.Combobox(frm_opt, textvariable=self.method, values=["0", "1", "2", "3", "4", "5", "6"], state="readonly", width=4).grid(row=2, column=1, sticky="w", padx=4)
-        frm_opt.columnconfigure(1, weight=1)
+        ttk.Label(self.frm_opt, text="lossless").grid(row=1, column=0, sticky="e", padx=4, pady=2)
+        ttk.Checkbutton(self.frm_opt, variable=self.lossless, command=self._update_opt_header).grid(row=1, column=1, sticky="w", padx=4)
+        ttk.Label(self.frm_opt, text="method").grid(row=2, column=0, sticky="e", padx=4, pady=2)
+        cb_method = ttk.Combobox(self.frm_opt, textvariable=self.method, values=["0", "1", "2", "3", "4", "5", "6"], state="readonly", width=4)
+        cb_method.grid(row=2, column=1, sticky="w", padx=4)
+        cb_method.bind("<<ComboboxSelected>>", self._on_method_change)
+        self.frm_opt.columnconfigure(1, weight=1)
+        self._update_opt_header()
 
         # 操作
         frm_act = ttk.Frame(self.root)
@@ -91,6 +97,8 @@ class App:
         self.progress.pack(fill="x", **pad)
         self.status = ttk.Label(self.root, text="就绪")
         self.status.pack(fill="x", **pad)
+
+        self._fit_height()
 
     def _add_files(self):
         paths = filedialog.askopenfilenames(filetypes=[("PNG 图片", "*.png")])
@@ -126,6 +134,38 @@ class App:
         rounded = int(round(float(value)))
         self.quality.set(rounded)
         self.quality_label.config(text=str(rounded))
+        self._update_opt_header()
+
+    def _on_method_change(self, event):
+        self._update_opt_header()
+
+    def _update_opt_header(self):
+        arrow = "▾" if self.opt_expanded else "▸"
+        if self.lossless.get():
+            # 无损模式下 quality 不生效，摘要里不显示
+            summary = f"无损 · method {self.method.get()}"
+        else:
+            summary = f"质量 {self.quality.get()} · 有损 · method {self.method.get()}"
+        self.opt_header.config(text=f"{arrow} 转换参数（{summary}）")
+
+    def _toggle_opt(self):
+        self.opt_expanded = not self.opt_expanded
+        if self.opt_expanded:
+            # 必须指定锚点，否则重新 pack 会落到窗口底部
+            self.frm_opt.pack(after=self.opt_header, fill="x", **self.pad)
+        else:
+            self.frm_opt.pack_forget()
+        self._update_opt_header()
+        self._fit_height()
+
+    def _fit_height(self):
+        """按当前内容高度调整窗口，展开/收起参数区时不留下空白。"""
+        self.root.update_idletasks()
+        width = self.root.winfo_width()
+        if width <= 1:
+            # 窗口尚未映射时取不到实际宽度，退回初始宽度
+            width = self.width
+        self.root.geometry(f"{width}x{self.root.winfo_reqheight()}")
 
     def _convert(self):
         if self.busy:
